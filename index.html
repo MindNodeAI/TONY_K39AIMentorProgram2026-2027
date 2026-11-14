@@ -1081,8 +1081,21 @@ dialog::backdrop{background:#061727ad;backdrop-filter:blur(4px)}
  <!-- AI 分析報告與匯出 Word 區 -->
  <div id="admin-tab-ai-report" hidden>
   <div class="ai-report-box">
-   <h3 style="font-size:17px;margin-bottom:6px">📈 產學合作計畫 AI 智慧分析報告生成器</h3>
-   <p style="font-size:13px;color:#64748b;margin-bottom:14px">設定統計起訖時間，針對期間內註冊與活躍之 AI 指導員、AI 領航員、學員、輔導老師及各企業/學校參與度產出結構化洞察報告，並可一鍵下載為 Word (.doc) 檔案。</p>
+   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+    <h3 style="font-size:17px;margin:0">📈 產學合作計畫 AI 智慧分析報告生成器</h3>
+    <span class="role-tag admin" style="font-size:12px;padding:5px 12px">🤖 驅動模型：gemini-4-hydrogen</span>
+   </div>
+   <p style="font-size:13px;color:#64748b;margin-bottom:14px">設定統計起訖時間，透過 <strong>gemini-4-hydrogen</strong> 針對期間內註冊與活躍之 AI 指導員、AI 領航員、學員、輔導老師及各企業/學校參與度產出結構化洞察報告，並可一鍵下載為 Word (.doc) 檔案。</p>
+   <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:#fff;border:1px solid #cbd5e1;padding:10px 14px;border-radius:8px;margin-bottom:14px">
+    <label for="gemini-api-key-input" style="font-size:12px;font-weight:800;color:#0b2038;white-space:nowrap">🔑 Gemini API Key：</label>
+    <div class="pwd-wrapper" style="flex:1;min-width:220px">
+     <input type="password" id="gemini-api-key-input" placeholder="輸入 Google AI Studio API Key 以啟用 gemini-4-hydrogen 即時推理（僅儲存於本機瀏覽器）" style="width:100%;padding:7px 38px 7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px">
+     <button type="button" class="pwd-toggle" id="toggle-gemini-key-btn" aria-label="顯示或隱藏 API Key">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+     </button>
+    </div>
+    <span style="font-size:11px;color:#64748b">未填寫時將自動採用內建統計洞察模板</span>
+   </div>
    <div class="ai-report-controls">
     <div>
      <label for="report-start-date" style="display:block;font-size:12px;font-weight:700;margin-bottom:4px">起始日期</label>
@@ -1092,11 +1105,11 @@ dialog::backdrop{background:#061727ad;backdrop-filter:blur(4px)}
      <label for="report-end-date" style="display:block;font-size:12px;font-weight:700;margin-bottom:4px">結束日期</label>
      <input type="date" id="report-end-date" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">
     </div>
-    <button type="button" class="button button-dark" id="generate-ai-report-btn" style="padding:9px 16px;font-size:13px">✨ 產出 AI 分析報告</button>
+    <button type="button" class="button button-dark" id="generate-ai-report-btn" style="padding:9px 16px;font-size:13px">✨ 以 gemini-4-hydrogen 產出報告</button>
     <button type="button" class="button button-lime" id="export-word-btn" style="padding:9px 16px;font-size:13px">📄 輸出成 WORD 檔 (.doc)</button>
    </div>
    <div id="ai-report-container" class="ai-report-output">
-    <p style="color:#64748b;text-align:center;margin:24px 0">請點擊上方「✨ 產出 AI 分析報告」按鈕以生成最新數據分析報告。</p>
+    <p style="color:#64748b;text-align:center;margin:24px 0">請點擊上方「✨ 以 gemini-4-hydrogen 產出報告」按鈕以生成最新數據分析報告。</p>
    </div>
   </div>
  </div>
@@ -2952,17 +2965,70 @@ $("export-csv-btn").addEventListener("click", () => {
   window.showPortalToast("已成功匯出繁體中文 CSV 會員報表！");
 });
 
-// AI 分析報告與匯出 Word
-(function initDefaultReportDates() {
+// AI 分析報告與匯出 Word（串接 gemini-4-hydrogen 模型）
+const GEMINI_MODEL = "gemini-4-hydrogen";
+const GEMINI_STORAGE_KEY = "tony_saas_gemini_api_key_v1";
+
+(function initDefaultReportDatesAndKey() {
   const today = new Date();
   const start = new Date(today.getFullYear(), 0, 1);
   $("report-start-date").value = start.toISOString().slice(0, 10);
   $("report-end-date").value = today.toISOString().slice(0, 10);
+  try {
+    const savedKey = localStorage.getItem(GEMINI_STORAGE_KEY) || "";
+    if (savedKey && $("gemini-api-key-input")) $("gemini-api-key-input").value = savedKey;
+  } catch {}
 })();
 
-$("generate-ai-report-btn").addEventListener("click", () => {
+$("gemini-api-key-input")?.addEventListener("change", e => {
+  try {
+    localStorage.setItem(GEMINI_STORAGE_KEY, e.target.value.trim());
+  } catch {}
+});
+
+$("toggle-gemini-key-btn")?.addEventListener("click", () => {
+  const input = $("gemini-api-key-input");
+  if (!input) return;
+  input.type = input.type === "password" ? "text" : "password";
+});
+
+async function fetchGeminiHydrogenInsights(statsPayload, userApiKey) {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(userApiKey)}`;
+  const promptText = [
+    "你是 TONY 楊文澤資深 AI 科技顧問設計之「新光人壽 x 龍華科大 AI指導員/領航員 共學計畫」數據分析助理。",
+    "請根據以下去識別化區間統計數據，為計畫主持人與管理團隊撰寫 4 點具體、專業的「產學共學推動洞察與教學行動建議」（繁體中文）。",
+    "課程背景：AI 領航員為 3 次精華工作坊（共 10 套核心 Skill：W1 為 H11/01/H19；W2 為 N02/H10/N03/N04；W3 為 H18/32/20）；AI 指導員為 7 次工具應用課程（18 套 Skill 零重複全覆蓋）。",
+    `統計數據：${JSON.stringify(statsPayload)}`,
+    "請以 JSON 陣列格式回傳 4 個物件，每個物件包含 title（標題，15字內）與 content（建議內容，60~100字），不要包含多餘說明文字。"
+  ].join("\n");
+
+  const resp = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: promptText }] }],
+      generationConfig: {
+        temperature: 0.4,
+        responseMimeType: "application/json"
+      }
+    })
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`API HTTP ${resp.status}: ${errText.slice(0, 120)}`);
+  }
+  const result = await resp.json();
+  const rawText = result?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+  const parsed = JSON.parse(rawText);
+  if (!Array.isArray(parsed) || !parsed.length) throw new Error("回傳格式非有效陣列");
+  return parsed;
+}
+
+$("generate-ai-report-btn").addEventListener("click", async () => {
   const startStr = $("report-start-date").value || "2026-01-01";
   const endStr = $("report-end-date").value || "2027-12-31";
+  const genBtn = $("generate-ai-report-btn");
 
   const filtered = allMembersCache.filter(m => {
     const dStr = String(m.createdAt || "").slice(0, 10);
@@ -2985,11 +3051,56 @@ $("generate-ai-report-btn").addEventListener("click", () => {
   const avgLogins = total ? (sumLogins / total).toFixed(1) : "0.0";
   const topOrgs = Object.entries(orgMap).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
+  const fallbackInsights = [
+    {
+      title: "落實 7 次課程零重複最適配教學",
+      content: "指導員課程已將 18 套 Skill 精準分流至 U1~U7 七大單元，建議依序推進，確保學員每堂課攻克 2~4 套高關聯 Skill。"
+    },
+    {
+      title: "強化領航員 3 次工作坊專案產出",
+      content: "W1 聚焦溫暖關懷（溝通對練 H11、貼圖 01 與節慶賀卡 H19）、W2 強化知識新聞整理與視覺化（N02、H10、N03、N04）、W3 結合顧問數位孿生（20）、8 格漫畫（H18）與短影音腳本（32）。"
+    }
+  ];
+
+  let insightsList = fallbackInsights;
+  let modelStatusLabel = `${GEMINI_MODEL}（內建統計基準模式）`;
+
+  const inputKey = ($("gemini-api-key-input")?.value || "").trim();
+  if (inputKey) {
+    try {
+      localStorage.setItem(GEMINI_STORAGE_KEY, inputKey);
+    } catch {}
+    genBtn.disabled = true;
+    genBtn.textContent = `⏳ ${GEMINI_MODEL} 智慧分析中...`;
+    try {
+      insightsList = await fetchGeminiHydrogenInsights(
+        {
+          period: `${startStr} ~ ${endStr}`,
+          totalMembers: total,
+          totalLogins: sumLogins,
+          avgLoginsPerMember: avgLogins,
+          identityBreakdown: countByIdentity,
+          topOrganizations: topOrgs
+        },
+        inputKey
+      );
+      modelStatusLabel = `${GEMINI_MODEL}（雲端即時推理完成）`;
+    } catch (err) {
+      console.warn("Gemini API fallback:", err);
+      modelStatusLabel = `${GEMINI_MODEL}（API 連線異常，已自動切換內建洞察）`;
+      window.showPortalToast(`⚠ ${GEMINI_MODEL} 呼叫未成功，已改用內建分析模板`);
+    } finally {
+      genBtn.disabled = false;
+      genBtn.textContent = `✨ 以 ${GEMINI_MODEL} 產出報告`;
+    }
+  }
+
   $("ai-report-container").innerHTML = `
     <div id="word-export-content">
       <h2 style="color:#0b2038;margin-bottom:6px;font-size:22px">新光人壽 x 龍華科大 AI指導員/領航員 共學計畫｜商業與學習數據 AI 分析報告</h2>
       <p style="font-size:13px;color:#64748b;margin-top:0">
-        統計區間：<strong>${esc(startStr)} 至 ${esc(endStr)}</strong> ｜ 報告產出時間：${esc(formatNowISO())} ｜ 計畫主持人：許麗萍 主任 ｜ 系統設計：TONY 楊文澤 資深 AI 科技顧問
+        統計區間：<strong>${esc(startStr)} 至 ${esc(endStr)}</strong> ｜ 報告產出時間：${esc(formatNowISO())} ｜ AI 模型：<strong>${esc(modelStatusLabel)}</strong><br>
+        計畫主持人：許麗萍 主任 ｜ 系統設計：TONY 楊文澤 資深 AI 科技顧問
       </p>
       <h3>一、 區間關鍵營運指標摘要 (Executive Summary)</h3>
       <ul>
@@ -3015,21 +3126,20 @@ $("generate-ai-report-btn").addEventListener("click", () => {
           ${topOrgs.length ? topOrgs.map(([orgName, cnt], idx) => `<tr><td>第 ${idx + 1} 名</td><td><strong>${esc(orgName)}</strong></td><td>${cnt} 人</td></tr>`).join("") : '<tr><td colspan="3">此區間尚無單位數據</td></tr>'}
         </tbody>
       </table>
-      <h4>四、 TONY 顧問 AI 智能洞察與產學推動建議</h4>
+      <h3>四、 TONY 顧問 × ${esc(GEMINI_MODEL)} 智能洞察與產學推動建議</h3>
       <ol>
-        <li><strong>落實 7 次課程零重複最適配教學：</strong>指導員課程已將 18 套 Skill 精準分流至 U1~U7 七大單元，建議依序推進，確保學員每堂課攻克 2~4 套高關聯 Skill。</li>
-        <li><strong>強化領航員 3 次工作坊專案產出：</strong>W1 聚焦溫暖關懷（溝通對練 H11、貼圖 01 與節慶賀卡 H19）、W2 強化知識新聞整理與視覺化（N02、H10、N03、N04）、W3 結合顧問數位孿生（20）、8 格漫畫（H18）與短影音腳本（32）。</li>
+        ${insightsList.map(item => `<li><strong>${esc(item.title || "重點建議")}：</strong>${esc(item.content || "")}</li>`).join("")}
       </ol>
       <p style="font-size:12px;color:#64748b;margin-top:20px;border-top:1px solid #cbd5e1;padding-top:10px">
-        © 2026 TonyStudio. 本學習平台與分析報告由 TONY 楊文澤資深AI科技顧問設計. All Rights Reserved.
+        © 2026 TonyStudio. 本學習平台與分析報告由 TONY 楊文澤資深AI科技顧問設計（AI 分析模型：${esc(GEMINI_MODEL)}）. All Rights Reserved.
       </p>
     </div>
   `;
-  window.showPortalToast("✨ AI 分析報告已產出！可點擊右側按鈕輸出成 Word 檔。");
+  window.showPortalToast(`✨ 已完成 ${GEMINI_MODEL} 分析報告產出！可點擊右側按鈕輸出成 Word 檔。`);
 });
 
-$("export-word-btn").addEventListener("click", () => {
-  if (!$("word-export-content")) $("generate-ai-report-btn").click();
+$("export-word-btn").addEventListener("click", async () => {
+  if (!$("word-export-content")) await $("generate-ai-report-btn").click();
   const contentHtml = $("ai-report-container").innerHTML;
   const startStr = $("report-start-date").value || "2026";
   const endStr = $("report-end-date").value || "2027";
